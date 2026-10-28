@@ -47,6 +47,74 @@ describe("dependency collector", () => {
     const joinEdges = graph.edges.filter((e) => e.sourceRole === "join");
     expect(joinEdges).toHaveLength(2);
     expect(joinEdges.map((e) => e.joinType).sort()).toEqual(["inner", "leftOuter"]);
+    expect(joinEdges.every((edge) => edge.relationship?.usedInProjection === false)).toBe(true);
+    expect(node(graph, "C")?.usedInProjection).toBe(false);
+  });
+
+  it("extracts view columns and rich join relationship details", async () => {
+    const src = `define view entity A as select from B
+      left outer join C as _C on B.x = _C.x and B.y = _C.y
+      { key B.x, _C.z as Z }`;
+    const { graph } = await run("A", { A: src, B, C });
+    const root = node(graph, "A");
+    expect(root?.columns).toEqual([
+      expect.objectContaining({ name: "x", expression: "B.x", isKey: true }),
+      expect.objectContaining({ name: "Z", expression: "_C.z", isKey: false }),
+    ]);
+
+    const edge = graph.edges.find((candidate) => candidate.to === "C");
+    expect(edge?.relationship).toMatchObject({
+      kind: "join",
+      joinType: "leftOuter",
+      alias: "_C",
+      condition: "B.x = _C.x and B.y = _C.y",
+      left: [{ name: "B" }],
+      right: { alias: "_C", name: "C" },
+      usedInProjection: true,
+    });
+    expect(edge?.relationship?.predicates).toEqual([
+      expect.objectContaining({ left: "B.x", operator: "=", right: "_C.x" }),
+      expect.objectContaining({ left: "B.y", operator: "=", right: "_C.y" }),
+    ]);
+  });
+
+  it("traverses declared associations and marks unused ones", async () => {
+    const src = `define view entity A as select from B
+      association [0..1] to C as _C on B.x = _C.x
+      association [0..*] to D as _D on B.x = _D.x
+      { key B.x, _C.y as Y }`;
+    const { graph } = await run("A", { A: src }, { B: "TABL", C: "TABL", D: "TABL" });
+    const root = node(graph, "A");
+    expect(root?.associations).toHaveLength(2);
+    expect(root?.associations?.map((association) => association.name)).toEqual(["_C", "_D"]);
+
+    const associationEdges = graph.edges.filter((edge) => edge.sourceRole === "association");
+    expect(associationEdges).toHaveLength(2);
+    expect(associationEdges.find((edge) => edge.to === "C")?.relationship).toMatchObject({
+      kind: "association",
+      cardinality: "[0..1]",
+      usedInProjection: true,
+    });
+    expect(associationEdges.find((edge) => edge.to === "D")?.relationship).toMatchObject({
+      kind: "association",
+      cardinality: "[0..*]",
+      usedInProjection: false,
+    });
+    expect(node(graph, "C")?.usedInProjection).toBe(true);
+    expect(node(graph, "D")?.usedInProjection).toBe(false);
+  });
+
+  it("captures DDIC table fields on the leaf node", async () => {
+    const src = `define view entity A as select from B left outer join T1 on B.x = T1.mandt { key B.x }`;
+    const { graph } = await run(
+      "A",
+      { A: src, B, T1: `define table T1 { key mandt : mandt; value : abap.char(10); }` },
+      { T1: "TABL" },
+    );
+    expect(node(graph, "T1")?.columns).toEqual([
+      expect.objectContaining({ name: "mandt", type: "mandt", isKey: true, kind: "field" }),
+      expect.objectContaining({ name: "value", type: "char(10)", isKey: false, kind: "field" }),
+    ]);
   });
 
   it("CDS whose source is another CDS", async () => {
@@ -140,6 +208,10 @@ describe("dependency collector", () => {
     expect(node(graph, "A")?.dependencies).toContain("B");
     expect(node(graph, "B")?.status).toBe("loaded");
     expect(graph.warnings.some((w) => w.includes("partial AST"))).toBe(true);
+    expect(graph.diagnostics?.some((diagnostic) => diagnostic.category === "parse" && diagnostic.objectId === "A")).toBe(
+      true,
+    );
+    expect(node(graph, "A")?.parseErrors?.length).toBeGreaterThan(0);
   });
 
   it("enforces the maximum object count", async () => {

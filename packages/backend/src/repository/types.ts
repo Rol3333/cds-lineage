@@ -1,5 +1,8 @@
 import type {
   CacheMode,
+  EdgeRelationship,
+  ObjectAssociation,
+  ObjectColumn,
   RepositoryCandidate,
   ResolutionStatus,
   SourceFormat,
@@ -91,7 +94,15 @@ export interface ParsedArtifact {
   sourceHash: string;
   parser: { name: string; version: string; extractorVersion: string };
   definitionKinds: string[];
-  sources: Array<{ name: string; role: string; joinType?: string; alias?: string }>;
+  sources: Array<{
+    name: string;
+    role: string;
+    joinType?: string;
+    alias?: string;
+    relationship?: EdgeRelationship;
+  }>;
+  columns: ObjectColumn[];
+  associations: ObjectAssociation[];
   parseErrors: Array<{ message: string; line: number; column: number }>;
   note?: string;
 }
@@ -106,6 +117,8 @@ export interface DependenciesArtifact {
     canonicalName: string;
     role: string;
     joinType?: string;
+    alias?: string;
+    usedInProjection?: boolean;
     objectType?: string | null;
     resolution: ResolutionStatus | "unknown";
   }>;

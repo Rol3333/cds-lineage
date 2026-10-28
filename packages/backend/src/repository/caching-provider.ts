@@ -202,6 +202,8 @@ export class CachingObjectProvider implements ObjectProvider {
         parser: { name: PARSER_NAME, version: PARSER_VERSION, extractorVersion: EXTRACTOR_VERSION },
         definitionKinds: extracted.definitionKinds,
         sources: extracted.sources,
+        columns: extracted.columns,
+        associations: extracted.associations,
         parseErrors: extracted.parseErrors,
       };
       dependencies = this.dependenciesFrom(extracted.sources, sourceHash);
@@ -238,6 +240,8 @@ export class CachingObjectProvider implements ObjectProvider {
       parser: { name: PARSER_NAME, version: PARSER_VERSION, extractorVersion: EXTRACTOR_VERSION },
       definitionKinds: extracted.definitionKinds,
       sources: extracted.sources,
+      columns: extracted.columns,
+      associations: extracted.associations,
       parseErrors: extracted.parseErrors,
     };
     const dependencies = this.dependenciesFrom(extracted.sources, sourceHash);
@@ -245,7 +249,13 @@ export class CachingObjectProvider implements ObjectProvider {
   }
 
   private dependenciesFrom(
-    sources: Array<{ name: string; role: string; joinType?: string }>,
+    sources: Array<{
+      name: string;
+      role: string;
+      joinType?: string;
+      alias?: string;
+      relationship?: { usedInProjection?: boolean };
+    }>,
     sourceHash: string,
   ): DependenciesArtifact {
     return {
@@ -257,6 +267,8 @@ export class CachingObjectProvider implements ObjectProvider {
         canonicalName: source.name.toUpperCase(),
         role: source.role,
         joinType: source.joinType,
+        alias: source.alias,
+        usedInProjection: source.relationship?.usedInProjection,
         // Types are confirmed later by the resolver; the graph carries them.
         objectType: null,
         resolution: "unknown" as const,

@@ -628,6 +628,8 @@ export class FileSystemRepository {
       parser: { name: "none", version: "0", extractorVersion: EXTRACTOR_VERSION },
       definitionKinds: [],
       sources: [],
+      columns: [],
+      associations: [],
       parseErrors: [],
       note: input.metadataOnly
         ? "Metadata-only object; no parseable source is available."

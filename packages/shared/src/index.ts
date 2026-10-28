@@ -92,7 +92,105 @@ export interface RepositoryCandidate {
 }
 
 /** Role of a source relationship within its parent's SELECT structure. */
-export type SourceRole = "primary" | "join" | "set-operation";
+export type SourceRole = "primary" | "join" | "association" | "set-operation";
+
+/** One output column/element of a CDS view or one field of a DDIC table/structure. */
+export interface ObjectColumn {
+  /** Display name: alias, field name, or final expression segment. */
+  name: string;
+  /** Projection expression, when the column is a CDS view element. */
+  expression?: string;
+  /** Formatted type, when the AST provides one. */
+  type?: string;
+  isKey: boolean;
+  kind: "projection" | "field";
+  localized?: boolean;
+  isVirtual?: boolean;
+  redirectedTo?: string;
+  notNull?: boolean;
+}
+
+/** Association declared by a CDS view. */
+export interface ObjectAssociation {
+  /** Association alias, e.g. `_PRReleaseDate`. */
+  name: string;
+  target: string;
+  associationKind: "association" | "composition";
+  /** Formatted bracket or word cardinality. */
+  cardinality?: string;
+  condition?: string;
+  /** True when the alias is referenced by an output projection element. */
+  usedInProjection: boolean;
+  toParent?: boolean;
+  redirected?: boolean;
+  defaultFilter?: string;
+}
+
+/** One parser issue attached to a node. */
+export interface ParseIssue {
+  message: string;
+  line: number;
+  column: number;
+}
+
+/** Reference to a source alias and its resolved object name. */
+export interface SourceRef {
+  alias?: string;
+  /** Resolved object name. */
+  name: string;
+}
+
+/** Best-effort decomposition of one ON-clause predicate. */
+export interface JoinPredicate {
+  text: string;
+  left?: string;
+  operator?: string;
+  right?: string;
+}
+
+/** Rich relationship metadata for an edge. */
+export interface EdgeRelationship {
+  kind: "primary" | "join" | "association" | "set-operation";
+  joinType?: string;
+  alias?: string;
+  cardinality?: string;
+  associationKind?: "association" | "composition";
+  condition?: string;
+  predicates?: JoinPredicate[];
+  /** Aliases/objects already in scope that participate in the condition. */
+  left?: SourceRef[];
+  /** Newly introduced source. */
+  right?: SourceRef;
+  /** Whether the source contributes at least one output column. */
+  usedInProjection?: boolean;
+  toParent?: boolean;
+  redirected?: boolean;
+  self?: boolean;
+}
+
+export type DiagnosticCategory =
+  | "parse"
+  | "resolution"
+  | "cache"
+  | "limit"
+  | "cycle"
+  | "metadata"
+  | "request"
+  | "other";
+
+export type DiagnosticSeverity = "error" | "warning" | "info";
+
+/** Structured diagnostic used by the Errors tab. */
+export interface GraphDiagnostic {
+  id: string;
+  severity: DiagnosticSeverity;
+  category: DiagnosticCategory;
+  message: string;
+  objectId?: string;
+  edgeId?: string;
+  line?: number;
+  column?: number;
+}
 
 export interface DependencyNode {
   /** Stable identity — the canonical (upper-cased) object name. */
@@ -117,6 +215,14 @@ export interface DependencyNode {
   stale?: boolean;
   errorCode?: ErrorCode;
   errorMessage?: string;
+  /** Columns/elements when the source is parseable. */
+  columns?: ObjectColumn[];
+  /** Associations declared by this CDS view. */
+  associations?: ObjectAssociation[];
+  /** Parser issues for this object (partial AST still keeps dependencies). */
+  parseErrors?: ParseIssue[];
+  /** False when no incoming relationship contributes output columns. */
+  usedInProjection?: boolean;
   /** Ids of the node's direct dependencies (for the details panel). */
   dependencies: string[];
 }
@@ -132,6 +238,8 @@ export interface DependencyEdge {
   sourceRole?: SourceRole;
   /** Normalized join type, when the edge came from a join. */
   joinType?: string;
+  /** Rich relationship detail for the Details tab. */
+  relationship?: EdgeRelationship;
 }
 
 export interface DependencyGraph {
@@ -140,6 +248,8 @@ export interface DependencyGraph {
   nodes: DependencyNode[];
   edges: DependencyEdge[];
   warnings: string[];
+  /** Structured diagnostics for the Errors tab. */
+  diagnostics?: GraphDiagnostic[];
 }
 
 /** Outcome of an analysis request, including limit information. */

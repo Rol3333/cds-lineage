@@ -3,10 +3,17 @@ import { DEFAULT_MAX_DEPTH } from "@cds-visualiser/shared";
 
 interface ControlsProps {
   loading: boolean;
+  showAssociations: boolean;
+  onToggleAssociations: (value: boolean) => void;
   onAnalyze: (name: string, maxDepth: number) => void;
 }
 
-export default function Controls({ loading, onAnalyze }: ControlsProps) {
+export default function Controls({
+  loading,
+  showAssociations,
+  onToggleAssociations,
+  onAnalyze,
+}: ControlsProps) {
   const [name, setName] = useState("");
   const [maxDepth, setMaxDepth] = useState(DEFAULT_MAX_DEPTH);
 
@@ -38,13 +45,22 @@ export default function Controls({ loading, onAnalyze }: ControlsProps) {
           ))}
         </select>
       </label>
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={showAssociations}
+          onChange={(e) => onToggleAssociations(e.target.checked)}
+        />
+        Show CDS associations
+      </label>
       <button type="submit" className="primary" disabled={loading || !name.trim()}>
         {loading ? "Analysing…" : "Analyse dependencies"}
       </button>
       <p className="hint">
         Resolves objects through SAP repository search, reads the typed source, and renders the
         dependency graph. Results are cached in the local repository; depth is capped at 4 to keep
-        SAP load bounded. Root sits at the top; dependencies appear below.
+        SAP load bounded. Root sits at the top; dependencies appear below. Relationship labels appear
+        on hover or selection.
       </p>
     </form>
   );

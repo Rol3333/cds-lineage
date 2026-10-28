@@ -5,6 +5,7 @@ import type {
   DependencyEdge,
   DependencyNode,
   ErrorCode,
+  GraphDiagnostic,
   SourceKind,
 } from "@cds-visualiser/shared";
 import {
@@ -101,8 +102,13 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
   const nodes = new Map<string, DependencyNode>();
   const edges: DependencyEdge[] = [];
   const warnings: string[] = [];
+  const diagnostics: GraphDiagnostic[] = [];
   const parent = new Map<string, string | null>();
   const edgeCount = new Map<string, number>();
+
+  const addDiagnostic = (diagnostic: Omit<GraphDiagnostic, "id">): void => {
+    diagnostics.push({ id: `diag-${diagnostics.length + 1}`, ...diagnostic });
+  };
 
   let truncated = false;
   let limitReached: AnalyzeResult["limitReached"];
@@ -154,11 +160,18 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
     return node;
   };
 
-  const addEdge = (from: string, to: string, role?: DependencyEdge["sourceRole"], joinType?: string): void => {
+  const addEdge = (from: string, to: string, relationship?: DependencyEdge["relationship"]): void => {
     const key = `${from}->${to}`;
     const n = (edgeCount.get(key) ?? 0) + 1;
     edgeCount.set(key, n);
-    edges.push({ id: n === 1 ? key : `${key}#${n}`, from, to, sourceRole: role, joinType });
+    edges.push({
+      id: n === 1 ? key : `${key}#${n}`,
+      from,
+      to,
+      sourceRole: relationship?.kind,
+      joinType: relationship?.joinType,
+      relationship,
+    });
   };
 
   const isAncestor = (maybeAncestor: string, nodeId: string): boolean => {
@@ -186,9 +199,15 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
       errorCode: validation.error!.errorCode,
       message: preview(validation.error!.message, 500),
     });
+    addDiagnostic({
+      severity: "error",
+      category: "request",
+      message: validation.error!.message,
+      objectId: rootId,
+    });
 
     return complete({
-      graph: { rootId, maxDepth, nodes: [...nodes.values()], edges: [], warnings },
+      graph: { rootId, maxDepth, nodes: [...nodes.values()], edges: [], warnings, diagnostics },
       truncated: false,
       ...(deps.cache ? { cache: { ...deps.cache, hits: 0, misses: 0 } } : {}),
     });
@@ -224,16 +243,34 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
       if (result.stale) node.stale = true;
 
       if (result.refreshFailed) {
-        warnings.push(
-          `${node.id}: ${result.message ?? "Refresh failed; serving the previously cached copy."}`,
-        );
+        const message = result.message ?? "Refresh failed; serving the previously cached copy.";
+        warnings.push(`${node.id}: ${message}`);
+        addDiagnostic({
+          severity: "warning",
+          category: "cache",
+          message,
+          objectId: node.id,
+        });
       }
       if (result.stale) {
-        warnings.push(`${node.id}: cached copy is stale and could not be fully regenerated.`);
+        const message = "cached copy is stale and could not be fully regenerated.";
+        warnings.push(`${node.id}: ${message}`);
+        addDiagnostic({
+          severity: "warning",
+          category: "cache",
+          message,
+          objectId: node.id,
+        });
       }
 
       if (result.resolution !== "resolved") {
         applyResolutionFailure(node, result, warnings);
+        addDiagnostic({
+          severity: "error",
+          category: "resolution",
+          message: node.errorMessage ?? `Resolution failed: ${result.resolution}.`,
+          objectId: node.id,
+        });
         log?.warn("Dependency could not be resolved", {
           event: "analysis.node.failed",
           resolution: result.resolution,
@@ -262,6 +299,14 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
         node.kind = kindFromType(type, result.objectSubtype);
         node.status = "loaded";
         node.expandable = false;
+
+        if (
+          result.source &&
+          (result.sourceFormat === "table" || result.sourceFormat === "structure")
+        ) {
+          const tableStructure = extractSources(result.source);
+          if (tableStructure.columns.length > 0) node.columns = tableStructure.columns;
+        }
 
         parseLog?.info("Object classified", {
           event: "object.classified",
@@ -309,6 +354,20 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
       const extracted = extractSources(result.source);
       const parseDurationMs = Math.round(performance.now() - parseStartedAt);
       const slowParseMs = deps.slowParseMs ?? 1_000;
+
+      node.columns = extracted.columns;
+      node.associations = extracted.associations;
+      node.parseErrors = extracted.parseErrors;
+      for (const error of extracted.parseErrors) {
+        addDiagnostic({
+          severity: "error",
+          category: "parse",
+          message: preview(error.message, 1_000) ?? "Parser error",
+          objectId: node.id,
+          line: error.line,
+          column: error.column,
+        });
+      }
 
       // Genuine parse failure: no usable definition could be parsed at all.
       if (extracted.definitionKinds.length === 0) {
@@ -374,12 +433,23 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
       for (const dep of extracted.sources) {
         const depId = canonicalName(dep.name);
         if (depId.length === 0) continue;
+        const relationship = dep.relationship ?? { kind: dep.role };
 
-        // Self-reference is a (trivial) cycle.
+        // Self-reference is a (trivial) cycle. A declared self-association is a
+        // legitimate relationship, so keep it without reporting a dependency cycle.
         if (depId === node.id) {
-          addEdge(node.id, depId, dep.role, dep.joinType);
-          node.dependencies.push(depId);
-          warnings.push(`Cycle detected: ${node.id} references itself.`);
+          addEdge(node.id, depId, relationship);
+          if (!node.dependencies.includes(depId)) node.dependencies.push(depId);
+          if (dep.role === "association") continue;
+          const message = `Cycle detected: ${node.id} references itself.`;
+          warnings.push(message);
+          addDiagnostic({
+            severity: "warning",
+            category: "cycle",
+            message,
+            objectId: node.id,
+            edgeId: edges[edges.length - 1]?.id,
+          });
           log?.warn("Cycle detected", { event: "analysis.cycle", from: node.id, to: depId, depth: node.depth });
           continue;
         }
@@ -388,9 +458,14 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
         if (!nodes.has(depId) && nodes.size >= maxObjects) {
           truncated = true;
           limitReached = "max-objects";
-          warnings.push(
-            `Maximum object count (${maxObjects}) reached; remaining dependencies after ${node.id} were not added.`,
-          );
+          const message = `Maximum object count (${maxObjects}) reached; remaining dependencies after ${node.id} were not added.`;
+          warnings.push(message);
+          addDiagnostic({
+            severity: "warning",
+            category: "limit",
+            message,
+            objectId: node.id,
+          });
           log?.warn("Maximum object count reached", {
             event: "analysis.limit.objects",
             object: node.id,
@@ -403,13 +478,21 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
         const exists = nodes.has(depId);
         const child = ensureNode(depId, exists ? nodes.get(depId)!.depth : node.depth + 1);
 
-        addEdge(node.id, depId, dep.role, dep.joinType);
+        addEdge(node.id, depId, relationship);
         if (!node.dependencies.includes(depId)) node.dependencies.push(depId);
 
         if (!exists) {
           parent.set(depId, node.id);
         } else if (isAncestor(depId, node.id)) {
-          warnings.push(`Cycle detected: ${node.id} -> ${depId}.`);
+          const message = `Cycle detected: ${node.id} -> ${depId}.`;
+          warnings.push(message);
+          addDiagnostic({
+            severity: "warning",
+            category: "cycle",
+            message,
+            objectId: node.id,
+            edgeId: edges[edges.length - 1]?.id,
+          });
           log?.warn("Cycle detected", { event: "analysis.cycle", from: node.id, to: depId, depth: node.depth });
           continue; // do not re-read an ancestor
         } else {
@@ -445,6 +528,18 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
   };
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
+  const notExpandedCount = [...nodes.values()].filter(
+    (node) => node.status === "not-expanded",
+  ).length;
+  if (notExpandedCount > 0) {
+    addDiagnostic({
+      severity: "info",
+      category: "limit",
+      message: `${notExpandedCount} dependencies were not expanded at maximum depth ${maxDepth}.`,
+      objectId: rootId,
+    });
+  }
+
   // --- Deterministic output --------------------------------------------------
   for (const node of nodes.values()) {
     node.dependencies = [...new Set(node.dependencies)];
@@ -456,12 +551,26 @@ async function analyzeInternal(rootName: string, deps: CollectorDeps): Promise<A
     (a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.id.localeCompare(b.id),
   );
 
+  // A node contributes output columns when at least one incoming relationship is
+  // used by the projection. Primary/set-operation edges are always considered
+  // used; unused joins/associations remain visible but are marked as unused.
+  for (const node of sortedNodes) {
+    if (node.id === rootId) {
+      node.usedInProjection = true;
+      continue;
+    }
+    const incoming = sortedEdges.filter((edge) => edge.to === node.id);
+    if (incoming.length === 0) continue;
+    node.usedInProjection = incoming.some((edge) => edge.relationship?.usedInProjection !== false);
+  }
+
   const graph = {
     rootId,
     maxDepth,
     nodes: sortedNodes,
     edges: sortedEdges,
     warnings,
+    diagnostics,
   };
 
   const result: AnalyzeResult = { graph, truncated, limitReached };

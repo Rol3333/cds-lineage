@@ -239,6 +239,8 @@ describe("FileSystemRepository", () => {
         parser: { name: "@abapify/acds", version: PARSER_VERSION, extractorVersion: EXTRACTOR_VERSION },
         definitionKinds: ["viewEntity"],
         sources: [{ name: "CHANGED", role: "primary" }],
+        columns: [],
+        associations: [],
         parseErrors: [],
       },
       {
@@ -279,6 +281,8 @@ describe("FileSystemRepository", () => {
         parser: { name: "@abapify/acds", version: PARSER_VERSION, extractorVersion: EXTRACTOR_VERSION },
         definitionKinds: ["viewEntity"],
         sources: [{ name: "CDPOS", role: "primary" }],
+        columns: [],
+        associations: [],
         parseErrors: [],
       },
       {

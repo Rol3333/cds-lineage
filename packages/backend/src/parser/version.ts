@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
  * Bump `EXTRACTOR_VERSION` whenever the structural extraction semantics change
  * (e.g. new source roles, new traversal rules).
  */
-export const EXTRACTOR_VERSION = "2";
+export const EXTRACTOR_VERSION = "3";
 
 export const PARSER_NAME = "@abapify/acds";
 
