@@ -1,0 +1,27 @@
+{
+  "name": "abapify-cds-visualiser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Web tool that visualises dependencies between SAP ABAP CDS entities.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "npm run dev -w @cds-visualiser/backend",
+    "dev:frontend": "npm run dev -w @cds-visualiser/frontend",
+    "dev:fixtures": "cross-env CDS_FIXTURE_DIR=fixtures npm run dev:backend",
+    "build": "npm run build -w @cds-visualiser/frontend",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "repo:rebuild": "npm run repo:rebuild -w @cds-visualiser/backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@cds-visualiser/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "React + Vite UI for the CDS dependency visualiser.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cds-visualiser/shared": "0.1.0",
+    "@dagrejs/dagre": "^3.1.3",
+    "@xyflow/react": "^12.12.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

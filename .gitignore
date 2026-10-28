@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.tmp/
+tmp/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+coverage/
+.vite/
+# Local SAP object repository (Task 002) — never commit cached SAP data.
+storage/
+# Local structured logs (Task 003) — operational data, never commit.
+logs/

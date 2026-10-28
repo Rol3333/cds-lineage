@@ -1,0 +1,32 @@
+{
+  "name": "@cds-visualiser/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node.js + TypeScript backend: ADT CLI source retrieval, CDS parsing, and dependency collection.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "repo:rebuild": "tsx src/repository/rebuild-cli.ts"
+  },
+  "dependencies": {
+    "@abapify/acds": "^0.4.23",
+    "@cds-visualiser/shared": "0.1.0",
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "pino": "^10.4.0",
+    "pino-pretty": "^13.2.0",
+    "rotating-file-stream": "^3.2.10"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.5"
+  }
+}
